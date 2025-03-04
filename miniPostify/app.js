@@ -5,6 +5,7 @@ const userModel = require('./models/user')
 const postModel = require('./models/post')
 const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
+const upload = require('./config/multerconfig')
 
 const app = express()
 app.use(express.json())
@@ -15,6 +16,17 @@ app.use(cookieParser())
 
 app.get('/', async (req, res) => {
     res.render('index')
+})
+
+app.get('/upload', (req,res)=>{
+    res.render('upload')
+})
+
+app.post('/upload', isLoggedIn, upload.single('image'), async (req,res)=>{
+    let user = await userModel.findOne({email:req.user.email})
+    user.profilepic = req.file.filename
+    await user.save()
+    res.redirect('profile')
 })
 
 app.post('/register', async (req, res) => {
@@ -65,7 +77,7 @@ app.get('/login', async (req, res) => {
 app.post("/login", async (req, res) => {
     let { email, password } = req.body
     let user = await userModel.findOne({ email: email })
-    if (!user) return res.status(500).send("Something went wrong")
+    if (!user) return res.status(500).send("Something went wrong, Please check email or password")
     bcrypt.compare(password, user.password, async (err, result) => {
         if (result) {
             let token = jwt.sign({ email: email, userid: user._id }, "shhh");
@@ -88,12 +100,12 @@ app.get("/profile", isLoggedIn, async (req, res) => {
 })
 
 app.get("/edit/:id", isLoggedIn, async (req, res) => {
-    let post = await postModel.findOne({_id:req.params.id})
-    res.render('edit', {post})
+    let post = await postModel.findOne({ _id: req.params.id })
+    res.render('edit', { post })
 })
 
 app.post("/update/:id", isLoggedIn, async (req, res) => {
-    let post = await postModel.findOneAndUpdate({_id:req.params.id}, {content : req.body.content})
+    let post = await postModel.findOneAndUpdate({ _id: req.params.id }, { content: req.body.content })
     // await post.save()
     // res.redirect('/profile')
     console.log(post)
@@ -115,9 +127,7 @@ app.get("/like/:id", isLoggedIn, async (req, res) => {
 
 app.post("/post", isLoggedIn, async (req, res) => {
     let user = await userModel.findOne({ email: req.user.email })
-    console.log(req.body)
     let { content } = req.body
-    console.log(content)
     let post = await postModel.create({
         user: user._id,
         content: content
@@ -129,13 +139,21 @@ app.post("/post", isLoggedIn, async (req, res) => {
 })
 
 function isLoggedIn(req, res, next) {
-    if (req.cookies.token === "") res.redirect('login')
-    else {
-        let data = jwt.verify(req.cookies.token, "shhh")
-        req.user = data
-        next()
+    const token = req.cookies.token;
+    if (!token) {
+        return res.redirect('login');
+    } else {
+        let data;
+        try {
+            data = jwt.verify(token, "shhh");
+        } catch (error) {
+            return res.redirect('login');
+        }
+        req.user = data;
+        next();
     }
 }
+
 
 app.listen(3000, () => {
     console.log("server started!")
